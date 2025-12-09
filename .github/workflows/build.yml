@@ -1,50 +1,59 @@
-name: Build and Release
+name: Build and Release Forex Tool
 
 on:
   push:
     branches: [ main, master ]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+  create:  # 触发于新标签创建，如 v1.0.0，用于自动发布
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
-    runs-on: windows-latest
-    
+    runs-on: windows-latest  # Windows 环境，适合 WPF 应用
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/checkout@v4  # 更新到最新版
+
+    - name: Setup .NET 6.0
+      uses: actions/setup-dotnet@v4  # 更新到最新版
       with:
-        dotnet-version: '6.0.x'
-        
+        dotnet-version: 6.0.x
+
     - name: Restore dependencies
-      run: dotnet restore ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj
-      
-    - name: Build
-      run: dotnet build ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj --configuration Release --no-restore
-      
-    - name: Publish
-      run: dotnet publish ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -o ./publish
-      
-    - name: Create icon file
-      run: echo "Icon placeholder" > ./publish/icon.ico
-      
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      run: dotnet restore
+
+    - name: Build project
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish for Windows x64
+      run: dotnet publish ForexTaskbarTool/ForexTaskbarTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -o ./publish
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v5  # 修复：从 v3 更新到 v5
       with:
-        name: ForexTaskbarTool-win-x64
-        path: ./publish/ForexTaskbarTool.exe
-        
-    - name: Create Release
+        name: forex-tool-publish
+        path: ./publish/
+        retention-days: 30  # 保留 30 天，可下载
+
+  release:
+    needs: build  # 依赖构建成功
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')  # 只在新标签时运行
+    permissions:
+      contents: write  # 允许创建 Release
+
+    steps:
+    - name: Download build artifact
+      uses: actions/download-artifact@v5  # 修复：从 v3 更新到 v5
+      with:
+        name: forex-tool-publish
+        path: ./publish/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2  # 最新版，用于创建 Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
       with:
-        files: ./publish/ForexTaskbarTool.exe
+        files: ./publish/*.exe  # 附加可执行文件到 Release
         draft: false
         prerelease: false
       env:
