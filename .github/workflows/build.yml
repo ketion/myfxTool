@@ -3,7 +3,7 @@ name: Build & Release ForexTool
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:     # 手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,38 +13,34 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: 安装 .NET 6.0
+    - name: 安装 .NET 8.0（推荐，顺便干掉 net6.0-windows 过期的警告）
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '6.0.x'
+        dotnet-version: '8.0.x'        # 直接升级到 .NET 8，长期支持到 2026 年
 
-    # 正确路径：三层 ForexTaskbarTool
-    - name: Restore 依赖
+    - name: Restore
       run: dotnet restore "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj"
 
-    - name: 编译项目
-      run: dotnet build "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj" --configuration Release --no-restore
+    - name: 发布单文件可执行程序（关闭 Trimmed，WPF 必备）
+      run: dotnet publish "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj" ^
+        -c Release ^
+        -r win-x64 ^
+        --self-contained true ^
+        -p:PublishSingleFile=true ^
+        -p:IncludeNativeLibrariesForSelfExtract=true ^
+        -p:IncludeAllContentForSelfExtract=true ^
+        --output ./publish
 
-    - name: 发布单文件可执行程序（win-x64）
-      run: dotnet publish "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj" --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:IncludeNativeLibrariesForSelfExtract=true --output ./publish
-
-    - name: 上传 Artifact（随时下载）
+    - name: 上传最终 exe
       uses: actions/upload-artifact@v5
       with:
-        name: ForexTaskbarTool-Win64-${{ github.run_number }}
-        path: ./publish/
-        retention-days: 90
-        if-no-files-found: warn
+        name: ForexTaskbarTool-Win64.exe
+        path: ./publish/ForexTaskbarTool.exe
 
-    # 修复：用维护版 action-gh-release（支持创建 Release + 上传 asset）
-    - name: 创建 GitHub Release 并上传 exe（仅标签触发）
-      if: startsWith(github.ref, 'refs/tags/')  # 只在新标签时运行
+    # 打 tag 时自动创建 Release 并附上 exe
+    - name: 创建 Release（仅 tag）
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
-        draft: false
-        prerelease: false
-        files: ./publish/ForexTaskbarTool.exe  # 自动附加 exe 到 Release
+        files: ./publish/ForexTaskbarTool.exe
+        generate_release_notes: true
