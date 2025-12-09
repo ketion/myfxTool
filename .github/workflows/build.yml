@@ -13,34 +13,37 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
 
-    - name: 安装 .NET 8.0（推荐，顺便干掉 net6.0-windows 过期的警告）
+    - name: 安装 .NET 8.0（去掉所有过期警告）
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'        # 直接升级到 .NET 8，长期支持到 2026 年
+        dotnet-version: '8.0.x'
 
     - name: Restore
       run: dotnet restore "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj"
 
-    - name: 发布单文件可执行程序（关闭 Trimmed，WPF 必备）
-      run: dotnet publish "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj" ^
-        -c Release ^
-        -r win-x64 ^
-        --self-contained true ^
-        -p:PublishSingleFile=true ^
-        -p:IncludeNativeLibrariesForSelfExtract=true ^
-        -p:IncludeAllContentForSelfExtract=true ^
+    - name: 发布单文件（关闭 Trimmed，WPF 必备，单行命令避免 ^ 问题）
+      run: >
+        dotnet publish "ForexTaskbarTool/ForexTaskbarTool/ForexTaskbarTool.csproj"
+        -c Release
+        -r win-x64
+        --self-contained true
+        -p:PublishSingleFile=true
+        -p:IncludeNativeLibrariesForSelfExtract=true
+        -p:IncludeAllContentForSelfExtract=true
         --output ./publish
 
-    - name: 上传最终 exe
+    - name: 重命名方便下载
+      run: copy .\publish\ForexTaskbarTool.exe .\publish\ForexTaskbarTool-v${{ github.run_number }}.exe
+
+    - name: 上传 exe
       uses: actions/upload-artifact@v5
       with:
-        name: ForexTaskbarTool-Win64.exe
-        path: ./publish/ForexTaskbarTool.exe
+        name: ForexTaskbarTool-Win64
+        path: ./publish/*.exe
 
-    # 打 tag 时自动创建 Release 并附上 exe
-    - name: 创建 Release（仅 tag）
+    - name: 打 tag 时自动创建 Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: ./publish/ForexTaskbarTool.exe
+        files: ./publish/*.exe
         generate_release_notes: true
