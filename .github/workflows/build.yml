@@ -1,60 +1,51 @@
+```yaml
 name: Build and Release Forex Tool
 
 on:
   push:
     branches: [ main, master ]
-  create:  # 触发于新标签创建，如 v1.0.0，用于自动发布
-  workflow_dispatch:  # 允许手动触发
+  release:
+    types: [ published ]       # 发布 Release 时自动触发
+  workflow_dispatch:            # 允许手动触发
 
 jobs:
-  build:
-    runs-on: windows-latest  # Windows 环境，适合 WPF 应用
+  build-and-release:
+    runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4  # 更新到最新版
+    - name: Checkout 代码
+      uses: actions/checkout@v4
 
     - name: Setup .NET 6.0
-      uses: actions/setup-dotnet@v4  # 更新到最新版
+      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: '6.0.x'
 
-    - name: Restore dependencies
-      run: dotnet restore
+    # 关键：指定正确的项目路径
+    - name: Restore 依赖
+      run: dotnet restore ForexTaskbarTool/ForexTaskbarTool.csproj
 
-    - name: Build project
-      run: dotnet build --configuration Release --no-restore
+    - name: Build 项目
+      run: dotnet build ForexTaskbarTool/ForexTaskbarTool.csproj -c Release --no-restore
 
-    - name: Publish for Windows x64
-      run: dotnet publish ForexTaskbarTool/ForexTaskbarTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -o ./publish
+    - name: 发布单文件可执行程序（win-x64）
+      run: dotnet publish ForexTaskbarTool/ForexTaskbarTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:IncludeNativeLibrariesForSelfExtract=true --output ./publish
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v5  # 修复：从 v3 更新到 v5
+    - name: 上传构建产物（用于手动下载）
+      uses: actions/upload-artifact@v5
       with:
-        name: forex-tool-publish
-        path: ./publish/
-        retention-days: 30  # 保留 30 天，可下载
+        name: ForexTaskbarTool-v${{ github.run_number }}
+        path: ./publish/*
+        retention-days: 90
 
-  release:
-    needs: build  # 依赖构建成功
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')  # 只在新标签时运行
-    permissions:
-      contents: write  # 允许创建 Release
-
-    steps:
-    - name: Download build artifact
-      uses: actions/download-artifact@v5  # 修复：从 v3 更新到 v5
-      with:
-        name: forex-tool-publish
-        path: ./publish/
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2  # 最新版，用于创建 Release
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: ./publish/*.exe  # 附加可执行文件到 Release
-        draft: false
-        prerelease: false
+    # 只有在创建正式 Release 时才执行下面这步
+    - name: 上传到 GitHub Release（仅 Release 时）
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./publish/ForexTaskbarTool.exe
+        asset_name: ForexTaskbarTool.exe
+        asset_content_type: application/octet-stream
